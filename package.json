@@ -1,0 +1,34 @@
+{
+  "name": "brainbridge",
+  "version": "0.1.0",
+  "description": "MCP server that lets Claude Code and other agents drive brainotes and texbrain, the browser note and LaTeX apps, live in your tabs.",
+  "author": "Braian Plaku",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "brainbridge": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx src/index.ts",
+    "start": "node dist/index.js",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "mcp",
+    "claude-code",
+    "handwriting",
+    "latex",
+    "brainotes",
+    "texbrain"
+  ]
+}
