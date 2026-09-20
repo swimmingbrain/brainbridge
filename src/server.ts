@@ -21,6 +21,9 @@ import {
 
 export const CALL_TIMEOUT = 30_000;
 
+const DEFAULT_ORIGINS = ['https://notes.swimmingbrain.dev', 'https://tex.swimmingbrain.dev'];
+const LOCAL_ORIGIN = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/;
+
 export const APP_TITLE: Record<AppName, string> = {
   brainotes: 'braiNOTES',
   texbrain: 'TeXbrain'
@@ -56,6 +59,7 @@ export interface BridgeOptions {
   port: number;
   host?: string;
   version: string;
+  origins?: string[];
   log?: (message: string) => void;
 }
 
@@ -85,6 +89,7 @@ export class Bridge extends EventEmitter {
   readonly host: string;
   readonly version: string;
   private _port: number;
+  private readonly origins: string[];
   private readonly log: (message: string) => void;
   private readonly http: Server;
   private readonly wss: WebSocketServer;
@@ -96,10 +101,16 @@ export class Bridge extends EventEmitter {
     this._port = options.port;
     this.host = options.host ?? '127.0.0.1';
     this.version = options.version;
+    this.origins = [...DEFAULT_ORIGINS, ...(options.origins ?? [])];
     this.log = options.log ?? (() => {});
     this.http = createServer((req, res) => this.handleHttp(req, res));
     this.wss = new WebSocketServer({ noServer: true });
     this.http.on('upgrade', (req, socket, head) => {
+      if (!this.originAllowed(req.headers.origin)) {
+        socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
+        socket.destroy();
+        return;
+      }
       this.wss.handleUpgrade(req, socket, head, (ws) => this.attach(ws));
     });
   }
@@ -244,8 +255,22 @@ export class Bridge extends EventEmitter {
 
   // ---- http ----------------------------------------------------------------
 
-  private handleHttp(req: IncomingMessage, res: ServerResponse): void {
-    res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
-    res.end(JSON.stringify({ error: 'not found' }));
+  private originAllowed(origin: string | undefined): boolean {
+    // node clients and curl send no origin, pages always do
+    if (!origin) return true;
+    return this.origins.includes(origin) || LOCAL_ORIGIN.test(origin);
   }
+
+  private handleHttp(req: IncomingMessage, res: ServerResponse): void {
+    if (!this.originAllowed(req.headers.origin)) {
+      json(res, 403, { error: 'origin not allowed' });
+      return;
+    }
+    json(res, 404, { error: 'not found' });
+  }
+}
+
+function json(res: ServerResponse, status: number, body: unknown): void {
+  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
+  res.end(JSON.stringify(body));
 }
