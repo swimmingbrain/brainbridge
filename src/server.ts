@@ -261,9 +261,39 @@ export class Bridge extends EventEmitter {
     return this.origins.includes(origin) || LOCAL_ORIGIN.test(origin);
   }
 
+  health(): Record<string, unknown> {
+    const apps: Record<string, TabInfo | null> = {};
+    for (const app of APPS) apps[app] = this.connected(app) ? this.info(app) : null;
+    return { ok: true, server: 'brainbridge', version: this.version, port: this._port, apps };
+  }
+
   private handleHttp(req: IncomingMessage, res: ServerResponse): void {
-    if (!this.originAllowed(req.headers.origin)) {
+    const origin = req.headers.origin;
+    if (!this.originAllowed(origin)) {
       json(res, 403, { error: 'origin not allowed' });
+      return;
+    }
+    if (origin) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Vary', 'Origin');
+    }
+    if (req.method === 'OPTIONS') {
+      res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+      res.setHeader('Access-Control-Allow-Private-Network', 'true');
+      res.setHeader('Access-Control-Max-Age', '86400');
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+    const path = new URL(req.url ?? '/', `http://${this.host}:${this._port}`).pathname;
+    if (req.method === 'GET' && path === '/health') {
+      json(res, 200, this.health());
+      return;
+    }
+    if (req.method === 'GET' && path === '/') {
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(statusPage(this.version, this._port, (app) => (this.connected(app) ? this.info(app) : null)));
       return;
     }
     json(res, 404, { error: 'not found' });
@@ -273,4 +303,23 @@ export class Bridge extends EventEmitter {
 function json(res: ServerResponse, status: number, body: unknown): void {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
   res.end(JSON.stringify(body));
+}
+
+function statusPage(version: string, port: number, info: (app: AppName) => TabInfo | null): string {
+  const rows = APPS.map((app) => {
+    const tab = info(app);
+    const url = appUrl(app, port);
+    const state = tab
+      ? `connected, ${escapeHtml(tab.url)}`
+      : `waiting, open <a href="${url}">${escapeHtml(url.replace('https://', ''))}</a>`;
+    return `<li><b>${APP_TITLE[app]}</b>: ${state}</li>`;
+  }).join('');
+  return `<!doctype html><meta charset="utf-8"><title>brainbridge</title>
+<style>body{font:15px/1.5 system-ui,sans-serif;max-width:40rem;margin:4rem auto;padding:0 1rem;color:#ddd;background:#111}a{color:#8cf}</style>
+<h1>brainbridge ${escapeHtml(version)}</h1><ul>${rows}</ul>
+<p>This server only listens on your own machine. It is how your agent talks to the braiNOTES and TeXbrain tabs.</p>`;
+}
+
+function escapeHtml(text: string): string {
+  return text.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] ?? c);
 }
