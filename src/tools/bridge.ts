@@ -3,10 +3,10 @@
 
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { APPS } from '../protocol.js';
+import { APPS, DEFAULT_PORT } from '../protocol.js';
 import { appUrl, howToConnect, type Bridge } from '../server.js';
 import { findNotebook, type NotebookRow, type NotesStatus, type TexStatus } from '../apps.js';
-import { linksFile, readLinks, saveLink } from '../state.js';
+import { linkOfNotebook, linkOfProject, linksFile, readLinks, saveLink } from '../state.js';
 import { fail, message, text } from './result.js';
 
 export function registerBridgeTools(server: McpServer, bridge: Bridge): void {
@@ -104,4 +104,84 @@ export function registerBridgeTools(server: McpServer, bridge: Bridge): void {
       return text({ file: linksFile(), links });
     }
   );
+
+  server.registerTool(
+    'bridge_switch',
+    {
+      title: 'Switch app',
+      description:
+        'Go from the open notebook to its linked project (to "tex"), or from the open project to its linked notebook (to "notes"). ' +
+        'When the other app is connected it opens the document there. Always returns the address that opens it, ' +
+        'to give the user when the app is not connected. Without the first app connected it takes the newest link.',
+      inputSchema: {
+        to: z.enum(['notes', 'tex']).describe('"tex" opens the project in TeXbrain, "notes" the notebook in braiNOTES')
+      }
+    },
+    async ({ to }) => {
+      let link: FoundLink | undefined;
+      try {
+        link = to === 'tex' ? await linkFromNotes(bridge) : await linkFromTex(bridge);
+      } catch (error) {
+        return fail(error);
+      }
+      if (!link) return fail('There is no link yet. Make one with bridge_link.');
+      const app = to === 'tex' ? 'texbrain' : 'brainotes';
+      const url = to === 'tex' ? texUrl(link.project, bridge.port) : notesUrl(link.notebook, bridge.port);
+      const target = to === 'tex' ? { project: link.project } : { notebook: { id: link.notebook, name: link.name } };
+      if (!bridge.connected(app)) {
+        return text({ opened: false, ...target, url, note: `${app === 'texbrain' ? 'TeXbrain' : 'braiNOTES'} is not connected, open ${url}` });
+      }
+      // a link made while braiNOTES was away only knows the name
+      const args = to === 'tex' ? { name: link.project } : link.notebook === link.name ? { name: link.name } : { id: link.notebook };
+      try {
+        const status = await bridge.call(app, 'open', args);
+        return text({ opened: true, ...target, url, status });
+      } catch (error) {
+        return fail(`${message(error)} The address that opens it is ${url}`);
+      }
+    }
+  );
+}
+
+interface FoundLink {
+  notebook: string;
+  name: string;
+  project: string;
+}
+
+// the link of the notebook open in braiNOTES, the app's own link if this server
+// does not know it, or the newest link when braiNOTES is not connected
+async function linkFromNotes(bridge: Bridge): Promise<FoundLink | undefined> {
+  const links = await readLinks();
+  if (!bridge.connected('brainotes')) return links[0];
+  const { notebook } = await bridge.call<NotesStatus>('brainotes', 'status');
+  if (!notebook) throw new Error('No notebook is open in braiNOTES. Open one with notes_open first.');
+  const known = linkOfNotebook(links, notebook.id);
+  if (known) return known;
+  const row = (await bridge.call<NotebookRow[]>('brainotes', 'notebooks')).find((r) => r.id === notebook.id);
+  if (row?.tex) return { notebook: row.id, name: row.name, project: row.tex };
+  throw new Error(`The notebook "${notebook.name}" is not linked to a TeXbrain project. Link one with bridge_link.`);
+}
+
+async function linkFromTex(bridge: Bridge): Promise<FoundLink | undefined> {
+  const links = await readLinks();
+  if (!bridge.connected('texbrain')) return links[0];
+  const { project } = await bridge.call<TexStatus>('texbrain', 'status');
+  if (!project) throw new Error('No project is open in TeXbrain. Open one with tex_open first.');
+  const known = linkOfProject(links, project.name);
+  if (known) return known;
+  if (project.notes) return { notebook: project.notes, name: project.notes, project: project.name };
+  throw new Error(`The project "${project.name}" is not linked to a braiNOTES notebook. Link one with bridge_link.`);
+}
+
+function bridgeFlag(port: number): string {
+  return port === DEFAULT_PORT ? 'bridge' : `bridge=${port}`;
+}
+
+export function notesUrl(notebook: string, port = DEFAULT_PORT): string {
+  return `https://notes.swimmingbrain.dev/?notebook=${encodeURIComponent(notebook)}&${bridgeFlag(port)}`;
+}
+
+export function texUrl(project: string, port = DEFAULT_PORT): string {
+  return `https://tex.swimmingbrain.dev/editor?project=${encodeURIComponent(project)}&${bridgeFlag(port)}`;
 }
