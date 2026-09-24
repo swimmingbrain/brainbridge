@@ -7,6 +7,7 @@ import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { Bridge } from '../server.js';
 import { isPng } from '../png.js';
+import { writeBase64 } from '../files.js';
 import { forward } from './forward.js';
 import { fail, text } from './result.js';
 
@@ -128,6 +129,28 @@ export function registerNotesTools(server: McpServer, bridge: Bridge): void {
           return fail('That is not a PNG. Only PNG pictures can go on a page this way, convert it first.');
         }
         return text(await bridge.call('brainotes', 'add_image', { page, x, y, w, png: data }));
+      } catch (error) {
+        return fail(error);
+      }
+    }
+  );
+
+  server.registerTool(
+    'notes_export_pdf',
+    {
+      title: 'Export PDF',
+      description:
+        'Export the open notebook, or some of its pages, to a PDF file on this machine: the original PDF pages with the ink on top as vectors, ' +
+        'like the export button in the app but without a save dialog. Returns the path and the size.',
+      inputSchema: {
+        path: z.string().describe('absolute path of the .pdf file to write'),
+        pages: z.array(pageIndex).optional().describe('page indexes to export; defaults to every page')
+      }
+    },
+    async ({ path, pages }) => {
+      try {
+        const { pdf } = await bridge.call<{ pdf: string }>('brainotes', 'export_pdf', pages ? { pages } : {});
+        return text(await writeBase64(path, pdf));
       } catch (error) {
         return fail(error);
       }
