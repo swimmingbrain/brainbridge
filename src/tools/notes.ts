@@ -59,4 +59,27 @@ export function registerNotesTools(server: McpServer, bridge: Bridge): void {
       }
     }
   );
+
+  forward(server, bridge, 'brainotes', 'pages', {
+    name: 'notes_pages',
+    title: 'Pages',
+    description:
+      'The pages of the open notebook: index (counted from 0), id, width and height in page units (A4 is 595 x 842), ' +
+      'how many items are on it and whether it has a PDF page behind the ink.',
+    shape: {}
+  });
+
+  forward(server, bridge, 'brainotes', 'goto', {
+    name: 'notes_goto',
+    title: 'Go to page',
+    description: 'Scroll the braiNOTES tab to a page, so the user sees what you are looking at.',
+    shape: { page: pageIndex }
+  });
+
+  forward(server, bridge, 'brainotes', 'new_page', {
+    name: 'notes_new_page',
+    title: 'New page',
+    description: 'Add an empty page with the notebook\'s paper, after a page or at the end. Returns the index of the new page.',
+    shape: { after: pageIndex.optional().describe('the new page goes after this one; defaults to the end') }
+  });
 }
