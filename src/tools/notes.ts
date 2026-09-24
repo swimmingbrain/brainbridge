@@ -1,9 +1,12 @@
 // the braiNOTES tools. most go to the tab as they are; the page tools add the
 // layout from the strokes, and transcription runs here in the server.
 
+import { readFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { Bridge } from '../server.js';
+import { isPng } from '../png.js';
 import { forward } from './forward.js';
 import { fail, text } from './result.js';
 
@@ -82,4 +85,52 @@ export function registerNotesTools(server: McpServer, bridge: Bridge): void {
     description: 'Add an empty page with the notebook\'s paper, after a page or at the end. Returns the index of the new page.',
     shape: { after: pageIndex.optional().describe('the new page goes after this one; defaults to the end') }
   });
+
+  forward(server, bridge, 'brainotes', 'add_text', {
+    name: 'notes_add_text',
+    title: 'Add text',
+    description:
+      'Put typed text on a page, its top left corner at x, y in page units from the top left of the page. ' +
+      'One undo step. Returns the id of the new text item.',
+    shape: {
+      page: pageIndex,
+      x: z.number().describe('left edge, page units'),
+      y: z.number().describe('top edge, page units'),
+      text: z.string().min(1),
+      size: z.number().positive().optional().describe('font size in page units; defaults to the text tool size'),
+      color: z.string().optional().describe('css colour like #1e66f5; defaults to the text tool colour')
+    }
+  });
+
+  server.registerTool(
+    'notes_add_image',
+    {
+      title: 'Add image',
+      description:
+        'Put a PNG picture on a page, its top left corner at x, y in page units, w wide (the height follows the picture). ' +
+        'Give an absolute path of a PNG file on this machine, or the PNG as base64. It is stored in the notebook like a pasted picture. ' +
+        'One undo step. Returns the id of the new image item.',
+      inputSchema: {
+        page: pageIndex,
+        x: z.number().describe('left edge, page units'),
+        y: z.number().describe('top edge, page units'),
+        w: z.number().positive().optional().describe('width in page units; defaults to the picture size, at most the page width'),
+        path: z.string().optional().describe('absolute path of a .png file'),
+        png: z.string().optional().describe('the PNG as base64, when there is no file')
+      }
+    },
+    async ({ page, x, y, w, path, png }) => {
+      try {
+        let data = png?.replace(/^data:image\/png;base64,/, '');
+        if (path) data = (await readFile(resolve(path))).toString('base64');
+        if (!data) return fail('Give the path of a PNG file or the PNG itself as base64.');
+        if (!isPng(Buffer.from(data.slice(0, 48), 'base64'))) {
+          return fail('That is not a PNG. Only PNG pictures can go on a page this way, convert it first.');
+        }
+        return text(await bridge.call('brainotes', 'add_image', { page, x, y, w, png: data }));
+      } catch (error) {
+        return fail(error);
+      }
+    }
+  );
 }
