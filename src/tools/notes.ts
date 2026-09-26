@@ -6,12 +6,15 @@ import { resolve } from 'node:path';
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { Bridge } from '../server.js';
+import { findNotebook, type NotebookRow, type NotesStatus } from '../apps.js';
 import { isPng } from '../png.js';
 import { writeBase64 } from '../files.js';
+import { readPage } from '../page.js';
 import { forward } from './forward.js';
-import { fail, text } from './result.js';
+import { fail, image, text } from './result.js';
 
 export const pageIndex = z.number().int().min(0).describe('page index from notes_pages, the first page is 0');
+export const notebookKey = z.string().optional().describe('notebook id or name from notes_list; defaults to the open notebook');
 
 export function registerNotesTools(server: McpServer, bridge: Bridge): void {
   forward(server, bridge, 'brainotes', 'notebooks', {
@@ -156,4 +159,41 @@ export function registerNotesTools(server: McpServer, bridge: Bridge): void {
       }
     }
   );
+
+  server.registerTool(
+    'notes_page',
+    {
+      title: 'Look at page',
+      description:
+        'See a page: the page as a PNG image (paper, PDF background, pictures, highlighter and ink, the long side at most 2000 px) ' +
+        'and a text with its layout found from the strokes: lines, blocks of lines and drawings with their boxes in page units, ' +
+        'plus typed texts and pictures. Handwriting has no text layer, so look here before you describe or copy a page.',
+      inputSchema: {
+        notebook: notebookKey,
+        page: pageIndex,
+        scale: z.number().min(0.5).max(4).optional().describe('pixels per page unit, default 2; lowered to fit 2000 px')
+      }
+    },
+    async ({ notebook, page, scale }) => {
+      try {
+        await ensureNotebook(bridge, notebook);
+        const view = await readPage(bridge, page, scale ?? 2);
+        return image(view.png, view.text);
+      } catch (error) {
+        return fail(error);
+      }
+    }
+  );
+}
+
+// opens the notebook a tool was asked about, unless it is the open one already
+export async function ensureNotebook(bridge: Bridge, key: string | undefined): Promise<void> {
+  if (!key) return;
+  const status = await bridge.call<NotesStatus>('brainotes', 'status');
+  const open = status.notebook;
+  if (open && (open.id === key || open.name.toLowerCase() === key.trim().toLowerCase())) return;
+  const rows = await bridge.call<NotebookRow[]>('brainotes', 'notebooks');
+  const row = findNotebook(rows, key);
+  if (!row) throw new Error(`There is no notebook "${key}" in braiNOTES. It has: ${rows.map((r) => `"${r.name}"`).join(', ')}`);
+  await bridge.call('brainotes', 'open', { id: row.id });
 }
