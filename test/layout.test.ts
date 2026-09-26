@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { boxOf, layout, strokeUnit } from '../src/layout.js';
+import { boxOf, layout, mathBoxes, strokeUnit } from '../src/layout.js';
 import { fakePage } from './handwriting.js';
 
 // a stroke made of a few points along a straight line
@@ -63,4 +63,12 @@ describe('layout', () => {
     expect(items.reduce((n, i) => n + i.strokes, 0)).toBe(strokes.length);
   });
 
+  it('marks the derivation as math and the paragraphs not', () => {
+    const boxes = mathBoxes(fakePage().strokes);
+    expect(boxes).toHaveLength(1);
+    expect(boxes[0].y).toBeGreaterThan(180);
+    expect(boxes[0].y + boxes[0].h).toBeLessThan(320);
+    expect(mathBoxes([...word(50, 100, 3), line(50, 104, 75, 104)])).toEqual([]);
+    expect(mathBoxes([...word(50, 95, 3), line(48, 99, 75, 99.5), ...word(50, 112, 3)])).toHaveLength(1);
+  });
 });

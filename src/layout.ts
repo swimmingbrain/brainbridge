@@ -190,6 +190,33 @@ function round(box: Box): Box {
   return { x: r(box.x), y: r(box.y), w: r(box.w), h: r(box.h) };
 }
 
+// a line or block looks like math when it has a fraction bar with ink above and below it,
+// an equals sign, or a tall narrow stroke like an integral, a sum or big brackets
+function looksLikeMath(group: Group, unit: number): boolean {
+  const flat = group.items.filter((i) => i.box.h < unit / 3 && i.box.w > unit / 2);
+  const overX = (a: Box, b: Box) => a.x < b.x + b.w && b.x < a.x + a.w;
+  for (const bar of flat) {
+    if (bar.box.w > 2 * unit) {
+      const above = group.items.some((i) => i !== bar && overX(i.box, bar.box) && i.box.y + i.box.h <= bar.box.y + 1);
+      const below = group.items.some((i) => i !== bar && overX(i.box, bar.box) && i.box.y >= bar.box.y + bar.box.h - 1);
+      if (above && below) return true;
+    }
+    const twin = flat.find(
+      (o) => o !== bar && overX(o.box, bar.box) && Math.abs(o.box.y - bar.box.y) > 1 && Math.abs(o.box.y - bar.box.y) < unit
+    );
+    if (twin && bar.box.w < 2.5 * unit) return true;
+  }
+  return group.items.some((i) => i.box.h > 2.2 * unit && i.box.w < i.box.h / 2);
+}
+
+// the boxes worth a closer look when reading the page, a little padded, in reading order
+export function mathBoxes(strokes: Stroke[]): Box[] {
+  const { unit, groups: all } = groups(strokes);
+  return all
+    .filter((g) => g.kind !== 'drawing' && looksLikeMath(g, unit))
+    .map((g) => round({ x: g.box.x - unit / 2, y: g.box.y - unit / 2, w: g.box.w + unit, h: g.box.h + unit }));
+}
+
 export function layout(strokes: Stroke[]): LayoutItem[] {
   return groups(strokes).groups.map((g) => {
     const item: LayoutItem = { kind: g.kind, box: round(g.box), strokes: g.items.length };
