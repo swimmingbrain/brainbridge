@@ -9,7 +9,8 @@ import type { Bridge } from '../server.js';
 import { findNotebook, type NotebookRow, type NotesStatus } from '../apps.js';
 import { isPng } from '../png.js';
 import { writeBase64 } from '../files.js';
-import { fitScale, pageImage, readPage } from '../page.js';
+import { fitScale, pageImage, readPage, type PageContent } from '../page.js';
+import { countPoints, POINT_CAP, thin } from '../strokes.js';
 import { forward } from './forward.js';
 import { fail, image, text } from './result.js';
 
@@ -206,6 +207,33 @@ export function registerNotesTools(server: McpServer, bridge: Bridge): void {
         const fit = fitScale(w, h, scale ?? 4);
         const crop = await pageImage(bridge, page, fit, { x, y, w, h });
         return image(crop.png, `page ${page}, the part at ${x}, ${y}, ${w} x ${h} page units, ${crop.w} x ${crop.h} px at scale ${crop.scale ?? fit}`);
+      } catch (error) {
+        return fail(error);
+      }
+    }
+  );
+
+  server.registerTool(
+    'notes_strokes',
+    {
+      title: 'Raw strokes',
+      description:
+        'The raw ink of a page: every stroke with its id, pen, colour, size, box and points as [x, y, pressure] in page units, ' +
+        'plus typed texts, shapes and pictures. This is a lot of text; notes_page is what you want to read a page. ' +
+        `Above ${POINT_CAP} points the points are thinned out and the answer says so.`,
+      inputSchema: { page: pageIndex }
+    },
+    async ({ page }) => {
+      try {
+        const content = await bridge.call<PageContent>('brainotes', 'page_strokes', { page });
+        const before = countPoints(content.strokes);
+        const { strokes, tolerance } = thin(content.strokes);
+        const note =
+          tolerance > 0
+            ? `${before} points were thinned to ${countPoints(strokes)}: points closer than ${tolerance} page units to the line through their neighbours were left out`
+            : undefined;
+        // no indentation, the points alone are long enough
+        return text(JSON.stringify({ page, points: countPoints(strokes), note, ...content, strokes }));
       } catch (error) {
         return fail(error);
       }
