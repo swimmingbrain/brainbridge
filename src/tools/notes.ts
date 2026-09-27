@@ -9,7 +9,7 @@ import type { Bridge } from '../server.js';
 import { findNotebook, type NotebookRow, type NotesStatus } from '../apps.js';
 import { isPng } from '../png.js';
 import { writeBase64 } from '../files.js';
-import { readPage } from '../page.js';
+import { fitScale, pageImage, readPage } from '../page.js';
 import { forward } from './forward.js';
 import { fail, image, text } from './result.js';
 
@@ -179,6 +179,33 @@ export function registerNotesTools(server: McpServer, bridge: Bridge): void {
         await ensureNotebook(bridge, notebook);
         const view = await readPage(bridge, page, scale ?? 2);
         return image(view.png, view.text);
+      } catch (error) {
+        return fail(error);
+      }
+    }
+  );
+
+  server.registerTool(
+    'notes_region',
+    {
+      title: 'Zoom into page',
+      description:
+        'A part of a page as a PNG image, rendered sharp at a higher scale, to read a formula or small writing. ' +
+        'x, y, w, h are page units, the boxes from notes_page fit right in.',
+      inputSchema: {
+        page: pageIndex,
+        x: z.number().describe('left edge, page units'),
+        y: z.number().describe('top edge, page units'),
+        w: z.number().positive().describe('width, page units'),
+        h: z.number().positive().describe('height, page units'),
+        scale: z.number().min(0.5).max(8).optional().describe('pixels per page unit, default 4; lowered to fit 2000 px')
+      }
+    },
+    async ({ page, x, y, w, h, scale }) => {
+      try {
+        const fit = fitScale(w, h, scale ?? 4);
+        const crop = await pageImage(bridge, page, fit, { x, y, w, h });
+        return image(crop.png, `page ${page}, the part at ${x}, ${y}, ${w} x ${h} page units, ${crop.w} x ${crop.h} px at scale ${crop.scale ?? fit}`);
       } catch (error) {
         return fail(error);
       }
