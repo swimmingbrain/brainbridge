@@ -2,6 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { Bridge } from './server.js';
 import { registerBridgeTools } from './tools/bridge.js';
 import { registerNotesTools } from './tools/notes.js';
+import { registerTexTools } from './tools/tex.js';
 
 // what the agent reads before it touches any tool
 const INSTRUCTIONS = `You are working with braiNOTES (handwritten notebooks) and TeXbrain (a LaTeX editor), both open in the user's browser. The user watches the tabs while you work.
@@ -16,5 +17,6 @@ export function createMcpServer(bridge: Bridge): McpServer {
   const server = new McpServer({ name: 'brainbridge', version: bridge.version }, { instructions: INSTRUCTIONS });
   registerBridgeTools(server, bridge);
   registerNotesTools(server, bridge);
+  registerTexTools(server, bridge);
   return server;
 }
