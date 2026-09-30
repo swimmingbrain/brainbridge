@@ -113,4 +113,30 @@ export function registerTexTools(server: McpServer, bridge: Bridge): void {
       }
     }
   );
+
+  server.registerTool(
+    'tex_insert',
+    {
+      title: 'Insert text',
+      description:
+        'Insert text into a file through the editor, at the cursor, at the end, or at a line and column as tex_status gives the cursor. ' +
+        'The file is opened in the editor if it is not the active one. One undo step. Returns the new cursor.',
+      inputSchema: {
+        text: z.string().min(1),
+        at: z
+          .union([z.enum(['cursor', 'end']), z.object({ line: z.number().int().min(0), col: z.number().int().min(0) })])
+          .optional()
+          .describe('"cursor" (default), "end", or { line, col }'),
+        file: projectPath.optional().describe('the file to insert into; defaults to the active file')
+      }
+    },
+    async ({ text: content, at, file }) => {
+      try {
+        if (file) checkPath(file);
+        return text(await bridge.call('texbrain', 'insert', { text: content, at: at ?? 'cursor', file }));
+      } catch (error) {
+        return fail(error);
+      }
+    }
+  );
 }
