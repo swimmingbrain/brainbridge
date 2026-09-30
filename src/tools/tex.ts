@@ -3,9 +3,12 @@
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { Bridge } from '../server.js';
+import type { CompileStatus } from '../apps.js';
 import { checkLatex } from '../latex.js';
 import { forward } from './forward.js';
 import { fail, text } from './result.js';
+
+const COMPILE_WAIT = 45_000;
 
 const projectPath = z.string().min(1).describe('path relative to the project root, like main.tex or chapters/one.tex');
 
@@ -139,4 +142,83 @@ export function registerTexTools(server: McpServer, bridge: Bridge): void {
       }
     }
   );
+
+  server.registerTool(
+    'tex_compile',
+    {
+      title: 'Compile',
+      description:
+        'Compile the open project in the tab and wait for it, up to 45 seconds. Returns the state (ready or error), ' +
+        'the problems with their files and lines, and the end of the log. A first compile downloads TeX Live packages and can take ' +
+        'longer; then it answers "still compiling" and tex_compile_status tells when it is done.',
+      inputSchema: {}
+    },
+    async () => {
+      try {
+        const start = await bridge.call<{ started: boolean; reason?: string }>('texbrain', 'compile');
+        const deadline = Date.now() + COMPILE_WAIT;
+        // right after the start the tab may still report the compile before
+        let seen = !start.started;
+        const begun = Date.now();
+        while (Date.now() < deadline) {
+          await sleep(700);
+          const status = await bridge.call<CompileStatus>('texbrain', 'compile_status');
+          if (status.state === 'compiling') {
+            seen = true;
+            continue;
+          }
+          if (seen || Date.now() - begun > 3000) return text({ ...status, log: tail(status.log, 60) });
+        }
+        return text({ state: 'compiling', note: 'still compiling after 45 s, ask tex_compile_status again in a moment' });
+      } catch (error) {
+        return fail(error);
+      }
+    }
+  );
+
+  server.registerTool(
+    'tex_compile_status',
+    {
+      title: 'Compile status',
+      description: 'The state of the last or running compile (idle, compiling, ready, error), its problems and the last 60 lines of the log.',
+      inputSchema: {}
+    },
+    async () => {
+      try {
+        const status = await bridge.call<CompileStatus>('texbrain', 'compile_status');
+        return text({ ...status, log: tail(status.log, 60) });
+      } catch (error) {
+        return fail(error);
+      }
+    }
+  );
+
+  server.registerTool(
+    'tex_problems',
+    {
+      title: 'Problems',
+      description: 'The errors and warnings of the last compile, each with its file, line and message, as the problems panel shows them.',
+      inputSchema: {}
+    },
+    async () => {
+      try {
+        const status = await bridge.call<CompileStatus>('texbrain', 'compile_status');
+        if (status.state === 'idle') return text('Nothing was compiled yet. Run tex_compile.');
+        if (status.state === 'compiling') return text('A compile is running. Ask again when it is done.');
+        return text(status.problems.trim() || 'No problems in the last compile.');
+      } catch (error) {
+        return fail(error);
+      }
+    }
+  );
+}
+
+// the last lines of a log, whether the tab sends it as text or as lines
+function tail(log: string | string[] | undefined, lines: number): string {
+  const all = Array.isArray(log) ? log : String(log ?? '').split('\n');
+  return all.slice(-lines).join('\n');
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((done) => setTimeout(done, ms));
 }
