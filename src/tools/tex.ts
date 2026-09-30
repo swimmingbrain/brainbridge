@@ -5,7 +5,16 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { Bridge } from '../server.js';
 import { checkLatex } from '../latex.js';
 import { forward } from './forward.js';
-import { text } from './result.js';
+import { fail, text } from './result.js';
+
+const projectPath = z.string().min(1).describe('path relative to the project root, like main.tex or chapters/one.tex');
+
+// paths stay inside the project
+function checkPath(path: string): void {
+  if (/^([a-zA-Z]:)?[\\/]/.test(path) || path.split(/[\\/]/).includes('..')) {
+    throw new Error(`"${path}" is not inside the project. Paths are relative to the project root, like main.tex.`);
+  }
+}
 
 export function registerTexTools(server: McpServer, bridge: Bridge): void {
   server.registerTool(
@@ -60,4 +69,48 @@ export function registerTexTools(server: McpServer, bridge: Bridge): void {
       template: z.string().optional().describe('template name, as the new project dialog lists them; defaults to an empty article')
     }
   });
+
+  forward(server, bridge, 'texbrain', 'files', {
+    name: 'tex_files',
+    title: 'Files',
+    description: 'Every file of the open project: path relative to the project root and size in bytes.',
+    shape: {}
+  });
+
+  server.registerTool(
+    'tex_read',
+    {
+      title: 'Read file',
+      description: 'The text of a file of the open project, with the edits that are not saved yet if it is open in the editor.',
+      inputSchema: { path: projectPath }
+    },
+    async ({ path }) => {
+      try {
+        checkPath(path);
+        const { text: content } = await bridge.call<{ text: string }>('texbrain', 'read', { path });
+        return text(content);
+      } catch (error) {
+        return fail(error);
+      }
+    }
+  );
+
+  server.registerTool(
+    'tex_write',
+    {
+      title: 'Write file',
+      description:
+        'Create a file in the open project or replace all of its text. If it is open in the editor the user sees the new text ' +
+        'right away and can undo it. Folders in the path are made as needed.',
+      inputSchema: { path: projectPath, text: z.string().describe('the whole new text of the file') }
+    },
+    async ({ path, text: content }) => {
+      try {
+        checkPath(path);
+        return text(await bridge.call('texbrain', 'write', { path, text: content }));
+      } catch (error) {
+        return fail(error);
+      }
+    }
+  );
 }
