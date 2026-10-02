@@ -5,8 +5,11 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { Bridge } from '../server.js';
 import type { CompileStatus } from '../apps.js';
 import { checkLatex } from '../latex.js';
+import { writeBase64 } from '../files.js';
+import { pngSize } from '../png.js';
+import { LONG_SIDE } from '../page.js';
 import { forward } from './forward.js';
-import { fail, text } from './result.js';
+import { fail, image, text } from './result.js';
 
 const COMPILE_WAIT = 45_000;
 
@@ -206,6 +209,52 @@ export function registerTexTools(server: McpServer, bridge: Bridge): void {
         if (status.state === 'idle') return text('Nothing was compiled yet. Run tex_compile.');
         if (status.state === 'compiling') return text('A compile is running. Ask again when it is done.');
         return text(status.problems.trim() || 'No problems in the last compile.');
+      } catch (error) {
+        return fail(error);
+      }
+    }
+  );
+
+  server.registerTool(
+    'tex_pdf_page',
+    {
+      title: 'Look at PDF page',
+      description:
+        'A page of the last compiled PDF as a PNG image, to check what the LaTeX looks like. Pages count from 1 like the PDF viewer. ' +
+        'The long side is kept at most 2000 px.',
+      inputSchema: {
+        page: z.number().int().min(1).describe('page number, the first page is 1'),
+        scale: z.number().min(0.5).max(4).optional().describe('pixels per PDF point, default 2')
+      }
+    },
+    async ({ page, scale }) => {
+      try {
+        let wanted = scale ?? 2;
+        let result = await bridge.call<{ png: string; pages: number }>('texbrain', 'pdf_page', { page, scale: wanted });
+        const size = pngSize(result.png);
+        if (size && Math.max(size.width, size.height) > LONG_SIDE) {
+          wanted = Math.floor(wanted * (LONG_SIDE / Math.max(size.width, size.height)) * 100) / 100;
+          result = await bridge.call<{ png: string; pages: number }>('texbrain', 'pdf_page', { page, scale: wanted });
+        }
+        const now = pngSize(result.png);
+        return image(result.png, `page ${page} of ${result.pages}${now ? `, ${now.width} x ${now.height} px` : ''} at scale ${wanted}`);
+      } catch (error) {
+        return fail(error);
+      }
+    }
+  );
+
+  server.registerTool(
+    'tex_save_pdf',
+    {
+      title: 'Save PDF',
+      description: 'Write the last compiled PDF to a file on this machine. Returns the path and the size.',
+      inputSchema: { path: z.string().describe('absolute path of the .pdf file to write') }
+    },
+    async ({ path }) => {
+      try {
+        const { pdf } = await bridge.call<{ pdf: string }>('texbrain', 'pdf');
+        return text(await writeBase64(path, pdf));
       } catch (error) {
         return fail(error);
       }
