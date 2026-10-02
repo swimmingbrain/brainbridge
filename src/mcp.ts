@@ -1,8 +1,10 @@
+import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { Bridge } from './server.js';
 import { registerBridgeTools } from './tools/bridge.js';
 import { registerNotesTools } from './tools/notes.js';
 import { registerTexTools } from './tools/tex.js';
+import { transcriptionPrompt } from './prompt.js';
 
 // what the agent reads before it touches any tool
 const INSTRUCTIONS = `You are working with braiNOTES (handwritten notebooks) and TeXbrain (a LaTeX editor), both open in the user's browser. The user watches the tabs while you work.
@@ -18,5 +20,18 @@ export function createMcpServer(bridge: Bridge): McpServer {
   registerBridgeTools(server, bridge);
   registerNotesTools(server, bridge);
   registerTexTools(server, bridge);
+
+  // the same instructions notes_transcribe uses, for agents that read pages on their own
+  server.registerPrompt(
+    'transcribe',
+    {
+      title: 'Transcribe a handwritten page',
+      description: 'The instructions brainbridge uses to turn a handwritten page into LaTeX or markdown, exactly as written.',
+      argsSchema: { format: z.enum(['latex', 'markdown']).optional().describe('latex (default) or markdown') }
+    },
+    ({ format }) => ({
+      messages: [{ role: 'user', content: { type: 'text', text: transcriptionPrompt(format ?? 'latex') } }]
+    })
+  );
   return server;
 }
