@@ -32,6 +32,7 @@
     "texbrain"
   ],
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.127.0",
     "@modelcontextprotocol/sdk": "^1.30.0",
     "katex": "^0.18.7",
     "ws": "^8.21.3",
