@@ -1,11 +1,13 @@
 // reading a handwritten page with claude: haiku reads the page and the zoomed math,
-// then katex checks every math span of what came back.
+// katex checks every math span, haiku looks at the spans that fail once more on
+// sharper crops, and sonnet reads a page that still fails.
 
 import Anthropic from '@anthropic-ai/sdk';
 import { checkLatex, type MathProblem } from './latex.js';
 import { transcriptionPrompt, type Format } from './prompt.js';
 
 export const FIRST_MODEL = 'claude-haiku-5-5';
+export const FALLBACK_MODEL = 'claude-sonnet-5-5';
 
 export interface Picture {
   label: string;
@@ -20,6 +22,8 @@ export interface TranscribeInput {
   page: Picture;
   // the math looked at closer, sent with the page
   crops: Picture[];
+  // sharper crops for a second look, only made when a span fails
+  zoom: () => Promise<Picture[]>;
   // the layout text of the page, as a hint where lines and blocks are
   layout: string;
 }
@@ -40,7 +44,17 @@ export function anthropicAsk(client = new Anthropic()): Ask {
     }
     content.push({ type: 'text', text: prompt });
     const messages: Anthropic.Beta.BetaMessageParam[] = [{ role: 'user', content }];
-    const response = await client.beta.messages.create({ model, max_tokens: 16000, messages });
+    // sonnet may hand a declined request to another model on the server; haiku has no such fallback
+    const response =
+      model === FALLBACK_MODEL
+        ? await client.beta.messages.create({
+            model,
+            max_tokens: 16000,
+            messages,
+            betas: ['server-side-fallback-2026-07-01'],
+            fallbacks: 'default'
+          })
+        : await client.beta.messages.create({ model, max_tokens: 16000, messages });
     if (response.stop_reason === 'refusal') throw new Error(`${model} declined to read the page`);
     const text = response.content.map((block) => (block.type === 'text' ? block.text : '')).join('');
     if (response.stop_reason === 'max_tokens') throw new Error(`${model} ran out of room before the end of the page`);
@@ -54,12 +68,54 @@ export function unfence(text: string): string {
   return (fenced ? fenced[1] : text).trim();
 }
 
+function rereadPrompt(format: Format, text: string, problems: MathProblem[]): string {
+  const list = problems.map((p) => `- line ${p.line}: ${p.math}\n  KaTeX says: ${p.error}`).join('\n');
+  return [
+    'This is a transcription of the handwritten page in the first image:',
+    '',
+    text,
+    '',
+    'These math spans of it do not parse:',
+    list,
+    '',
+    'Look at them again in the zoomed crops after the page and read them from the handwriting once more.',
+    'Fix what was misread or where the LaTeX itself broke, but still do not correct or complete the math.',
+    'Answer with the whole transcription again, with the same rules:',
+    '',
+    transcriptionPrompt(format)
+  ].join('\n');
+}
+
 export async function transcribe(input: TranscribeInput, ask: Ask): Promise<Transcription> {
   const prompt = `${transcriptionPrompt(input.format)}\n\nWhere things are on the page, found from the pen strokes:\n${input.layout}`;
-  const text = unfence(await ask(FIRST_MODEL, [input.page, ...input.crops], prompt));
-  const problems = checkLatex(text);
-  const steps = [`${FIRST_MODEL} read the page with ${input.crops.length} zoomed crops: ${summary(problems)}`];
-  return { text, model: FIRST_MODEL, problems, steps };
+  const steps: string[] = [];
+  let model = FIRST_MODEL;
+  let text = unfence(await ask(FIRST_MODEL, [input.page, ...input.crops], prompt));
+  let problems = checkLatex(text);
+  steps.push(`${FIRST_MODEL} read the page with ${input.crops.length} zoomed crops: ${summary(problems)}`);
+  if (problems.length === 0) return { text, model, problems, steps };
+
+  // once more on sharper crops, only for the spans that failed
+  const zoomed = await input.zoom();
+  const again = unfence(await ask(FIRST_MODEL, [input.page, ...zoomed], rereadPrompt(input.format, text, problems)));
+  const againProblems = checkLatex(again);
+  steps.push(`${FIRST_MODEL} read the failing spans again on ${zoomed.length} sharper crops: ${summary(againProblems)}`);
+  if (againProblems.length <= problems.length) {
+    text = again;
+    problems = againProblems;
+  }
+  if (problems.length === 0) return { text, model, problems, steps };
+
+  // the page is hard to read, the bigger model takes it from the start
+  const second = unfence(await ask(FALLBACK_MODEL, [input.page, ...zoomed], prompt));
+  const secondProblems = checkLatex(second);
+  steps.push(`${FALLBACK_MODEL} read the page: ${summary(secondProblems)}`);
+  if (secondProblems.length <= problems.length) {
+    text = second;
+    problems = secondProblems;
+    model = FALLBACK_MODEL;
+  }
+  return { text, model, problems, steps };
 }
 
 function summary(problems: MathProblem[]): string {
