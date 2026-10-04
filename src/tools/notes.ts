@@ -6,7 +6,7 @@ import { resolve } from 'node:path';
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { Bridge } from '../server.js';
-import { findNotebook, type NotebookRow, type NotesStatus } from '../apps.js';
+import { findNotebook, type NotebookRow, type NotesStatus, type TexStatus } from '../apps.js';
 import { isPng } from '../png.js';
 import { writeBase64 } from '../files.js';
 import { fitScale, pageImage, readPage, type PageContent } from '../page.js';
@@ -254,18 +254,30 @@ export function registerNotesTools(server: McpServer, bridge: Bridge): void {
         'Turn a handwritten page into LaTeX or markdown, exactly as written: nothing corrected, unreadable parts as [?], ' +
         'drawings as \\includegraphics{drawing-n}. With ANTHROPIC_API_KEY set for this server, Claude Haiku reads the page and ' +
         'zoomed crops of the math, KaTeX checks every formula, failing ones are read again and Claude Sonnet takes a page that still fails. ' +
-        'Without a key you get the page, its layout and the instructions, and you transcribe it yourself.',
+        'Without a key you get the page, its layout and the instructions, and you transcribe it yourself. ' +
+        'With into, the result also goes into a file of a TeXbrain project.',
       inputSchema: {
         notebook: notebookKey,
         page: pageIndex,
-        format: z.enum(['latex', 'markdown']).describe('latex gives a LaTeX body without preamble, markdown uses $ and $$ for math')
+        format: z.enum(['latex', 'markdown']).describe('latex gives a LaTeX body without preamble, markdown uses $ and $$ for math'),
+        into: z
+          .object({
+            project: z.string().min(1).describe('TeXbrain project name'),
+            file: z.string().min(1).describe('file in the project, like main.tex; made if it does not exist'),
+            at: z.enum(['end', 'cursor']).optional().describe('"end" (default, before \\end{document} if there is one) or "cursor"')
+          })
+          .optional()
+          .describe('also write the result into TeXbrain')
       }
     },
-    async ({ notebook, page, format }) => {
+    async ({ notebook, page, format, into }) => {
       try {
         await ensureNotebook(bridge, notebook);
         const view = await readPage(bridge, page, 2);
         if (!process.env.ANTHROPIC_API_KEY) {
+          const then = into
+            ? `\n\nThen put the result into ${into.file} of the TeXbrain project "${into.project}" with tex_insert or tex_write.`
+            : '';
           return {
             content: [
               { type: 'image', data: view.png, mimeType: 'image/png' },
@@ -274,7 +286,7 @@ export function registerNotesTools(server: McpServer, bridge: Bridge): void {
                 text:
                   'No ANTHROPIC_API_KEY is set for brainbridge, so transcribe this page yourself with the instructions below, ' +
                   'and zoom in with notes_region where the writing is small.\n\n' +
-                  `${view.text}\n\n${transcriptionPrompt(format)}`
+                  `${view.text}\n\n${transcriptionPrompt(format)}${then}`
               }
             ]
           };
@@ -306,6 +318,7 @@ export function registerNotesTools(server: McpServer, bridge: Bridge): void {
           report.push('these math spans still do not parse, check them on the page:');
           for (const p of result.problems) report.push(`  line ${p.line}: ${p.math} (${p.error})`);
         }
+        if (into) report.push(await writeInto(bridge, into, result.text));
         return {
           content: [
             { type: 'text', text: result.text },
@@ -317,6 +330,30 @@ export function registerNotesTools(server: McpServer, bridge: Bridge): void {
       }
     }
   );
+}
+
+// puts a transcription into a texbrain file: a new file gets it as its text, an existing one
+// at the cursor or at the end, before \end{document} when the file has one
+async function writeInto(bridge: Bridge, into: { project: string; file: string; at?: 'end' | 'cursor' }, body: string): Promise<string> {
+  const status = await bridge.call<TexStatus>('texbrain', 'status');
+  if (status.project?.name !== into.project) await bridge.call('texbrain', 'open', { name: into.project });
+  const files = await bridge.call<{ path: string }[]>('texbrain', 'files');
+  if (!files.some((f) => f.path === into.file)) {
+    await bridge.call('texbrain', 'write', { path: into.file, text: `${body}\n` });
+    return `written to ${into.file}, a new file in "${into.project}"`;
+  }
+  if (into.at === 'cursor') {
+    await bridge.call('texbrain', 'insert', { text: body, at: 'cursor', file: into.file });
+    return `inserted at the cursor in ${into.file} of "${into.project}"`;
+  }
+  const { text: current } = await bridge.call<{ text: string }>('texbrain', 'read', { path: into.file });
+  const end = current.lastIndexOf('\\end{document}');
+  const next =
+    end >= 0
+      ? `${current.slice(0, end).replace(/\s*$/, '\n\n')}${body}\n\n${current.slice(end)}`
+      : `${current.replace(/\s*$/, '\n\n')}${body}\n`;
+  await bridge.call('texbrain', 'write', { path: into.file, text: next });
+  return `added to ${into.file} of "${into.project}"${end >= 0 ? ', before \\end{document}' : ', at the end'}`;
 }
 
 // opens the notebook a tool was asked about, unless it is the open one already
