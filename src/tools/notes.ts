@@ -11,8 +11,14 @@ import { isPng } from '../png.js';
 import { writeBase64 } from '../files.js';
 import { fitScale, pageImage, readPage, type PageContent } from '../page.js';
 import { countPoints, POINT_CAP, thin } from '../strokes.js';
+import { mathBoxes, type Box } from '../layout.js';
+import { transcriptionPrompt } from '../prompt.js';
+import { anthropicAsk, transcribe, type Picture } from '../transcribe.js';
 import { forward } from './forward.js';
 import { fail, image, text } from './result.js';
+
+// at most this many crops of math go with a page, each costs image tokens
+const MAX_CROPS = 6;
 
 export const pageIndex = z.number().int().min(0).describe('page index from notes_pages, the first page is 0');
 export const notebookKey = z.string().optional().describe('notebook id or name from notes_list; defaults to the open notebook');
@@ -234,6 +240,78 @@ export function registerNotesTools(server: McpServer, bridge: Bridge): void {
             : undefined;
         // no indentation, the points alone are long enough
         return text(JSON.stringify({ page, points: countPoints(strokes), note, ...content, strokes }));
+      } catch (error) {
+        return fail(error);
+      }
+    }
+  );
+
+  server.registerTool(
+    'notes_transcribe',
+    {
+      title: 'Transcribe page',
+      description:
+        'Turn a handwritten page into LaTeX or markdown, exactly as written: nothing corrected, unreadable parts as [?], ' +
+        'drawings as \\includegraphics{drawing-n}. With ANTHROPIC_API_KEY set for this server, Claude Haiku reads the page and ' +
+        'zoomed crops of the math, KaTeX checks every formula, failing ones are read again and Claude Sonnet takes a page that still fails. ' +
+        'Without a key you get the page, its layout and the instructions, and you transcribe it yourself.',
+      inputSchema: {
+        notebook: notebookKey,
+        page: pageIndex,
+        format: z.enum(['latex', 'markdown']).describe('latex gives a LaTeX body without preamble, markdown uses $ and $$ for math')
+      }
+    },
+    async ({ notebook, page, format }) => {
+      try {
+        await ensureNotebook(bridge, notebook);
+        const view = await readPage(bridge, page, 2);
+        if (!process.env.ANTHROPIC_API_KEY) {
+          return {
+            content: [
+              { type: 'image', data: view.png, mimeType: 'image/png' },
+              {
+                type: 'text',
+                text:
+                  'No ANTHROPIC_API_KEY is set for brainbridge, so transcribe this page yourself with the instructions below, ' +
+                  'and zoom in with notes_region where the writing is small.\n\n' +
+                  `${view.text}\n\n${transcriptionPrompt(format)}`
+              }
+            ]
+          };
+        }
+        const label = `page ${page}, the whole page`;
+        const boxes = mathBoxes(view.content.strokes).slice(0, MAX_CROPS);
+        // no math found in the strokes: the second look goes over the lines and blocks
+        const second = boxes.length > 0 ? boxes : view.items.filter((i) => i.kind !== 'drawing').map((i) => i.box).slice(0, MAX_CROPS);
+        const crops = async (from: Box[], zoom: number, longSide: number): Promise<Picture[]> => {
+          const pictures: Picture[] = [];
+          for (const box of from) {
+            const crop = await pageImage(bridge, page, fitScale(box.w, box.h, zoom, longSide), box);
+            pictures.push({ label: `zoomed in at ${box.x}, ${box.y}, ${box.w} x ${box.h}`, png: crop.png });
+          }
+          return pictures;
+        };
+        const result = await transcribe(
+          {
+            format,
+            page: { label, png: view.png },
+            crops: await crops(boxes, 3, 1200),
+            zoom: () => crops(second, 5, 1600),
+            layout: view.text
+          },
+          anthropicAsk()
+        );
+        const report = [...result.steps];
+        if (result.problems.length > 0) {
+          report.push('these math spans still do not parse, check them on the page:');
+          for (const p of result.problems) report.push(`  line ${p.line}: ${p.math} (${p.error})`);
+        }
+        return {
+          content: [
+            { type: 'text', text: result.text },
+            { type: 'text', text: report.join('\n') }
+          ]
+        };
       } catch (error) {
         return fail(error);
       }
