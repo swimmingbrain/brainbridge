@@ -3,10 +3,11 @@
 //
 //   brainbridge                   the server, on port 7332 or BRAINBRIDGE_PORT
 //   brainbridge --port 7400       the server on another port
+//   brainbridge status            which apps are connected to the running server, then exit
 
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { DEFAULT_PORT } from './protocol.js';
-import { appUrl, Bridge } from './server.js';
+import { APPS, DEFAULT_PORT, type AppName } from './protocol.js';
+import { appUrl, Bridge, type TabInfo } from './server.js';
 import { createMcpServer } from './mcp.js';
 import { version } from './version.js';
 
@@ -14,13 +15,14 @@ const USAGE = `brainbridge ${version}, connects braiNOTES and TeXbrain to your a
 
   brainbridge                 run the mcp server on stdio (your agent starts it like this)
   brainbridge --port 7400     use another port than ${DEFAULT_PORT}, open the apps with ?bridge=7400 then
+  brainbridge status          say which apps are connected to the running server
   brainbridge --version       print the version
 
 BRAINBRIDGE_PORT sets the port too, BRAINBRIDGE_ORIGINS adds page origins that may connect (comma separated).
 `;
 
 export interface Args {
-  command: 'serve' | 'help' | 'version';
+  command: 'serve' | 'status' | 'help' | 'version';
   port: number;
 }
 
@@ -37,6 +39,7 @@ export function parseArgs(argv: string[], env: NodeJS.ProcessEnv = process.env):
     const arg = argv[i];
     if (arg === '--port' || arg === '-p') port = toPort(argv[++i], arg);
     else if (arg.startsWith('--port=')) port = toPort(arg.slice(7), '--port');
+    else if (arg === 'status') command = 'status';
     else if (arg === '--help' || arg === '-h' || arg === 'help') command = 'help';
     else if (arg === '--version' || arg === '-v') command = 'version';
     else throw new Error(`unknown argument "${arg}", see brainbridge --help`);
@@ -73,6 +76,23 @@ async function serve(port: number): Promise<void> {
   process.on('SIGTERM', shutdown);
 }
 
+async function status(port: number): Promise<number> {
+  let health: { version: string; apps: Record<AppName, TabInfo | null> };
+  try {
+    const response = await fetch(`http://127.0.0.1:${port}/health`, { signal: AbortSignal.timeout(3000) });
+    health = (await response.json()) as typeof health;
+  } catch {
+    console.log(`Nothing answers on port ${port}, so brainbridge is not running there. Your agent starts it when it starts.`);
+    return 1;
+  }
+  console.log(`brainbridge ${health.version} runs on port ${port}`);
+  for (const app of APPS) {
+    const tab = health.apps[app];
+    console.log(`  ${app.padEnd(10)} ${tab ? `connected, ${tab.url}` : `not connected, open ${appUrl(app, port)}`}`);
+  }
+  return 0;
+}
+
 export async function main(argv: string[]): Promise<void> {
   let args: Args;
   try {
@@ -84,5 +104,6 @@ export async function main(argv: string[]): Promise<void> {
   }
   if (args.command === 'help') process.stdout.write(USAGE);
   else if (args.command === 'version') console.log(version);
+  else if (args.command === 'status') process.exitCode = await status(args.port);
   else await serve(args.port);
 }
