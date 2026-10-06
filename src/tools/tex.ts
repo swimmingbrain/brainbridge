@@ -231,8 +231,11 @@ export function registerTexTools(server: McpServer, bridge: Bridge): void {
       try {
         let wanted = scale ?? 2;
         let result = await bridge.call<{ png: string; pages: number }>('texbrain', 'pdf_page', { page, scale: wanted });
-        const size = pngSize(result.png);
-        if (size && Math.max(size.width, size.height) > LONG_SIDE) {
+        // the page size is not known here, so shrink until the picture fits; the tab may cap the scale
+        // on its own, so one step is not always enough
+        for (let i = 0; i < 3; i++) {
+          const size = pngSize(result.png);
+          if (!size || Math.max(size.width, size.height) <= LONG_SIDE) break;
           wanted = Math.floor(wanted * (LONG_SIDE / Math.max(size.width, size.height)) * 100) / 100;
           result = await bridge.call<{ png: string; pages: number }>('texbrain', 'pdf_page', { page, scale: wanted });
         }
