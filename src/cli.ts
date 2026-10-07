@@ -6,8 +6,8 @@
 //   brainbridge status            which apps are connected to the running server, then exit
 
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { APPS, DEFAULT_PORT, type AppName } from './protocol.js';
-import { appUrl, Bridge, type TabInfo } from './server.js';
+import { DEFAULT_PORT, type AppName } from './protocol.js';
+import { APPS, appUrl, Bridge, type TabInfo } from './server.js';
 import { createMcpServer } from './mcp.js';
 import { version } from './version.js';
 

@@ -5,11 +5,6 @@ export const PROTOCOL_VERSION = 1;
 export const DEFAULT_PORT = 7332;
 
 export type AppName = 'brainotes' | 'texbrain';
-export const APPS: AppName[] = ['brainotes', 'texbrain'];
-
-// close codes the server uses on a tab's socket
-export const CLOSE_REPLACED = 4000;
-export const CLOSE_UNKNOWN_APP = 4001;
 
 // tab -> server, first message after the socket opens
 export interface HelloMessage {
@@ -48,7 +43,7 @@ export interface CallMessage {
 export interface WelcomeMessage {
   type: 'welcome';
   protocol: number;
-  server: 'brainbridge';
+  server: string;
   version: string;
 }
 

@@ -3,8 +3,8 @@
 
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { APPS, DEFAULT_PORT } from '../protocol.js';
-import { appUrl, howToConnect, type Bridge } from '../server.js';
+import { DEFAULT_PORT } from '../protocol.js';
+import { APPS, appUrl, howToConnect, type Bridge } from '../server.js';
 import { findNotebook, type NotebookRow, type NotesStatus, type TexStatus } from '../apps.js';
 import { linkOfNotebook, linkOfProject, linksFile, readLinks, saveLink } from '../state.js';
 import { fail, message, text } from './result.js';

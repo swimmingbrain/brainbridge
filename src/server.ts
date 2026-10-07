@@ -7,9 +7,6 @@ import { EventEmitter } from 'node:events';
 import type { AddressInfo } from 'node:net';
 import { WebSocketServer, WebSocket, type RawData } from 'ws';
 import {
-  APPS,
-  CLOSE_REPLACED,
-  CLOSE_UNKNOWN_APP,
   DEFAULT_PORT,
   PROTOCOL_VERSION,
   type AppName,
@@ -20,6 +17,12 @@ import {
 } from './protocol.js';
 
 export const CALL_TIMEOUT = 30_000;
+
+export const APPS: AppName[] = ['brainotes', 'texbrain'];
+
+// close codes for a tab's socket: another tab of the app took over, or it is no app we know
+const CLOSE_REPLACED = 4000;
+const CLOSE_UNKNOWN_APP = 4001;
 
 const DEFAULT_ORIGINS = ['https://notes.swimmingbrain.dev', 'https://tex.swimmingbrain.dev'];
 const LOCAL_ORIGIN = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/;

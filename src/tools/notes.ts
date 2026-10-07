@@ -332,14 +332,14 @@ export function registerNotesTools(server: McpServer, bridge: Bridge): void {
   );
 }
 
-// puts a transcription into a texbrain file: a new file gets it as its text, an existing one
-// at the cursor or at the end, before \end{document} when the file has one
 export interface Into {
   project: string;
   file: string;
   at?: 'end' | 'cursor';
 }
 
+// puts a transcription into a texbrain file: a new file gets it as its text, an existing one
+// at the cursor or at the end, before \end{document} when the file has one
 export async function writeInto(bridge: Bridge, into: Into, body: string): Promise<string> {
   const status = await bridge.call<TexStatus>('texbrain', 'status');
   if (status.project?.name !== into.project) await bridge.call('texbrain', 'open', { name: into.project });
