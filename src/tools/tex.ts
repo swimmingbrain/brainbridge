@@ -125,12 +125,13 @@ export function registerTexTools(server: McpServer, bridge: Bridge): void {
     {
       title: 'Insert text',
       description:
-        'Insert text into a file through the editor, at the cursor, at the end, or at a line and column as tex_status gives the cursor. ' +
+        'Insert text into a file through the editor, at the cursor, at the end, or at a line and column, both counted from 1 ' +
+        'like tex_status gives the cursor. ' +
         'The file is opened in the editor if it is not the active one. One undo step. Returns the new cursor.',
       inputSchema: {
         text: z.string().min(1),
         at: z
-          .union([z.enum(['cursor', 'end']), z.object({ line: z.number().int().min(0), col: z.number().int().min(0) })])
+          .union([z.enum(['cursor', 'end']), z.object({ line: z.number().int().min(1), col: z.number().int().min(1) })])
           .optional()
           .describe('"cursor" (default), "end", or { line, col }'),
         file: projectPath.optional().describe('the file to insert into; defaults to the active file')
