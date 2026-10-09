@@ -9,6 +9,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { DEFAULT_PORT, type AppName } from './protocol.js';
 import { APPS, appUrl, Bridge, type TabInfo } from './server.js';
 import { createMcpServer } from './mcp.js';
+import { followSwitches } from './follow.js';
 import { version } from './version.js';
 
 const USAGE = `brainbridge ${version}, connects braiNOTES and TeXbrain to your agent
@@ -57,6 +58,7 @@ async function serve(port: number): Promise<void> {
     .map((s) => s.trim())
     .filter(Boolean);
   const bridge = new Bridge({ port, version, origins, log });
+  followSwitches(bridge, log);
   try {
     await bridge.start();
   } catch (error) {
