@@ -1,4 +1,4 @@
-// reading a handwritten page with claude: haiku reads the page and the zoomed math,
+// reading a handwritten page through the anthropic api: haiku reads the page and the zoomed math,
 // katex checks every math span, haiku looks at the spans that fail once more on
 // sharper crops, and sonnet reads a page that still fails.
 

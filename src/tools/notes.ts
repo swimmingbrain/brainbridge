@@ -252,8 +252,8 @@ export function registerNotesTools(server: McpServer, bridge: Bridge): void {
       title: 'Transcribe page',
       description:
         'Turn a handwritten page into LaTeX or markdown, exactly as written: nothing corrected, unreadable parts as [?], ' +
-        'drawings as \\includegraphics{drawing-n}. With ANTHROPIC_API_KEY set for this server, Claude Haiku reads the page and ' +
-        'zoomed crops of the math, KaTeX checks every formula, failing ones are read again and Claude Sonnet takes a page that still fails. ' +
+        'drawings as \\includegraphics{drawing-n}. With ANTHROPIC_API_KEY set for this server, Haiku reads the page and zoomed crops ' +
+        'of the math through the Anthropic API, KaTeX checks every formula, failing ones are read again and Sonnet takes a page that still fails. ' +
         'Without a key you get the page, its layout and the instructions, and you transcribe it yourself. ' +
         'With into, the result also goes into a file of a TeXbrain project.',
       inputSchema: {
