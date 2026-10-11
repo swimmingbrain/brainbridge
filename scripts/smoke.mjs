@@ -124,7 +124,17 @@ await step('notes_transcribe', async () => {
   if (!read.image) body = read.text;
 });
 // without a key this script stands in for the agent and writes what the layout says
-body ??= `\\section*{Page ${page} of ${notebook.name}}\nThe layout of this page:\n\\begin{verbatim}\n${look.text.split('\n').slice(1, 12).join('\n')}\n\\end{verbatim}\n\\begin{align*}\nf(x) &= x^2 \\\\\nf'(x) &= 2x\n\\end{align*}`;
+body ??= [
+  `\\section*{Page ${page} of ${notebook.name}}`,
+  'The layout of this page:',
+  '\\begin{verbatim}',
+  ...look.text.split('\n').slice(1, 12),
+  '\\end{verbatim}',
+  '\\begin{align*}',
+  'f(x) &= x^2 \\\\',
+  "f'(x) &= 2x",
+  '\\end{align*}'
+].join('\n');
 show('latex_check', await call('latex_check', { text: body }));
 
 // ---- TeXbrain ----------------------------------------------------------------
@@ -139,7 +149,8 @@ const main = (await call('tex_read', { path: 'main.tex' })).text;
 const lineOf = (text) => main.split('\n').findIndex((l) => l.includes(text)) + 1;
 if (!main.includes('\\input{page}')) {
   const line = lineOf('\\end{document}');
-  show('tex_insert', await call('tex_insert', line > 0 ? { text: '\\input{page}\n', at: { line, col: 1 }, file: 'main.tex' } : { text: '\n\\input{page}\n', at: 'end', file: 'main.tex' }));
+  const at = line > 0 ? { line, col: 1 } : 'end';
+  show('tex_insert', await call('tex_insert', { text: '\\input{page}\n', at, file: 'main.tex' }));
 }
 // align* needs amsmath, a new project may not have it
 if (!main.includes('amsmath') && lineOf('\\begin{document}') > 0) {

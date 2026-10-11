@@ -2,7 +2,7 @@
 // katex checks every math span, haiku looks at the spans that fail once more on
 // sharper crops, and sonnet reads a page that still fails.
 
-import Anthropic from '@anthropic-ai/sdk';
+import type Anthropic from '@anthropic-ai/sdk';
 import { checkLatex, type MathProblem } from './latex.js';
 import { transcriptionPrompt, type Format } from './prompt.js';
 
@@ -35,8 +35,12 @@ export interface Transcription {
   steps: string[];
 }
 
-export function anthropicAsk(client = new Anthropic()): Ask {
+export function anthropicAsk(client?: Anthropic): Ask {
+  let loaded = client;
   return async (model, pictures, prompt) => {
+    // the sdk is loaded on the first page read, the server starts faster without it
+    loaded ??= new (await import('@anthropic-ai/sdk')).default();
+    const api = loaded;
     const content: Anthropic.Beta.BetaContentBlockParam[] = [];
     for (const picture of pictures) {
       content.push({ type: 'text', text: picture.label });
@@ -47,14 +51,14 @@ export function anthropicAsk(client = new Anthropic()): Ask {
     // sonnet may hand a declined request to another model on the server; haiku has no such fallback
     const response =
       model === FALLBACK_MODEL
-        ? await client.beta.messages.create({
+        ? await api.beta.messages.create({
             model,
             max_tokens: 16000,
             messages,
             betas: ['server-side-fallback-2026-07-01'],
             fallbacks: 'default'
           })
-        : await client.beta.messages.create({ model, max_tokens: 16000, messages });
+        : await api.beta.messages.create({ model, max_tokens: 16000, messages });
     if (response.stop_reason === 'refusal') throw new Error(`${model} declined to read the page`);
     const text = response.content.map((block) => (block.type === 'text' ? block.text : '')).join('');
     if (response.stop_reason === 'max_tokens') throw new Error(`${model} ran out of room before the end of the page`);
