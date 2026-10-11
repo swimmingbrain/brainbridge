@@ -131,10 +131,14 @@ export function registerBridgeTools(server: McpServer, bridge: Bridge): void {
       if (!bridge.connected(app)) {
         return text({ opened: false, ...target, url, note: `${app === 'texbrain' ? 'TeXbrain' : 'braiNOTES'} is not connected, open ${url}` });
       }
-      // a link made while braiNOTES was away only knows the name
-      const args = to === 'tex' ? { name: link.project } : link.notebook === link.name ? { name: link.name } : { id: link.notebook };
       try {
-        const status = await bridge.call(app, 'open', args);
+        let status: unknown;
+        if (to === 'tex') status = await bridge.call(app, 'open', { name: link.project });
+        else if (link.notebook !== link.name) status = await bridge.call(app, 'open', { id: link.notebook });
+        else {
+          // a link made while braiNOTES was away knows only what the user gave, an id or a name
+          status = await bridge.call(app, 'open', { id: link.notebook }).catch(() => bridge.call(app, 'open', { name: link.name }));
+        }
         return text({ opened: true, ...target, url, status });
       } catch (error) {
         return fail(`${message(error)} The address that opens it is ${url}`);
