@@ -136,9 +136,14 @@ else show('tex_create', await call('tex_create', { name: project }));
 show('tex_files', await call('tex_files'));
 await call('tex_write', { path: 'page.tex', text: `${body}\n` });
 const main = (await call('tex_read', { path: 'main.tex' })).text;
+const lineOf = (text) => main.split('\n').findIndex((l) => l.includes(text)) + 1;
 if (!main.includes('\\input{page}')) {
-  const line = main.split('\n').findIndex((l) => l.includes('\\end{document}')) + 1;
+  const line = lineOf('\\end{document}');
   show('tex_insert', await call('tex_insert', line > 0 ? { text: '\\input{page}\n', at: { line, col: 1 }, file: 'main.tex' } : { text: '\n\\input{page}\n', at: 'end', file: 'main.tex' }));
+}
+// align* needs amsmath, a new project may not have it
+if (!main.includes('amsmath') && lineOf('\\begin{document}') > 0) {
+  await call('tex_insert', { text: '\\usepackage{amsmath}\n', at: { line: lineOf('\\begin{document}'), col: 1 }, file: 'main.tex' });
 }
 show('tex_status', await call('tex_status'));
 
