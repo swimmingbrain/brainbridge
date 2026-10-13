@@ -1,6 +1,19 @@
-# brainBRIDGE
+<p align="center">
+  <img src="docs/brainbridge-logo.svg" alt="brainbridge logo" width="80" />
+</p>
 
-Connect [braiNOTES](https://notes.swimmingbrain.dev) and [TeXbrain](https://tex.swimmingbrain.dev) to Claude Code, Codex, Cursor or VS Code. Your agent reads your handwritten notes, writes them up in LaTeX and compiles them, while you watch it happen in your browser tabs.
+<h1 align="center">brainBRIDGE</h1>
+
+<p align="center">
+  Your handwritten notes, written up in LaTeX by your coding agent.<br/>
+  braiNOTES and TeXbrain, connected to Claude Code, Codex, Cursor or VS Code.
+</p>
+
+<p align="center">
+  <img src="docs/transcribe.gif" alt="braiNOTES and TeXbrain side by side: the notebook of the open project comes up, its handwritten page is read, written into main.tex as LaTeX and compiled, then another notebook switches TeXbrain to its project" width="800" />
+</p>
+
+Your agent reads your handwritten notes, writes them up in LaTeX and compiles them, while you watch it happen in your browser tabs.
 
 braiNOTES is for handwritten notes, TeXbrain is a LaTeX editor, both run entirely in the browser. This is a small MCP server that connects your agent to both tabs at once. It gets tools like `notes_page`, `notes_transcribe`, `tex_write`, `tex_compile` and `tex_pdf_page`: it can look at a page of your notes, turn it into LaTeX, put it into your project, compile it and look at the PDF.
 
