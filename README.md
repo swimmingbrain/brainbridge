@@ -30,6 +30,14 @@ you                    your agent                  brainbridge                  
 
 Nothing leaves your machine. The server only listens on the loopback address and the tabs only talk to it. The one exception is transcription with an API key, see below.
 
+## Use it
+
+1. Build the server and add it to Claude Code, see [Setup](#setup): `claude mcp add brainbridge -- node /absolute/path/to/brainbridge/dist/index.js`
+2. Open [notes.swimmingbrain.dev/?bridge](https://notes.swimmingbrain.dev/?bridge) and [tex.swimmingbrain.dev/editor?bridge](https://tex.swimmingbrain.dev/editor?bridge), allow the local connection, both Bridge segments turn green.
+3. Say "transcribe page 3 of my notebook Linear algebra into main.tex of my project Thesis".
+
+Claude Code opens the notebook, looks at page 3, writes it into main.tex as LaTeX exactly as you wrote it, compiles the project and checks the PDF. You see every step in the two tabs, and every change is one undo step.
+
 ## Setup
 
 **1. Build the server** (Node 20 or newer, and `pnpm`):
