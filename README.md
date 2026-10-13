@@ -13,9 +13,14 @@
   <img src="docs/transcribe.gif" alt="braiNOTES and TeXbrain side by side: the notebook of the open project comes up, its handwritten page is read, written into main.tex as LaTeX and compiled, then another notebook switches TeXbrain to its project" width="800" />
 </p>
 
+<p align="center">
+  <a href="https://notes.swimmingbrain.dev"><strong>braiNOTES &rarr; notes.swimmingbrain.dev</strong></a><br/>
+  <a href="https://tex.swimmingbrain.dev"><strong>TeXbrain &rarr; tex.swimmingbrain.dev</strong></a>
+</p>
+
 Your agent reads your handwritten notes, writes them up in LaTeX and compiles them, while you watch it happen in your browser tabs.
 
-braiNOTES is for handwritten notes, TeXbrain is a LaTeX editor, both run entirely in the browser. This is a small MCP server that connects your agent to both tabs at once. It gets tools like `notes_page`, `notes_transcribe`, `tex_write`, `tex_compile` and `tex_pdf_page`: it can look at a page of your notes, turn it into LaTeX, put it into your project, compile it and look at the PDF.
+[braiNOTES](https://github.com/swimmingbrain/brainotes) is for handwritten notes, [TeXbrain](https://github.com/swimmingbrain/texbrain) is a LaTeX editor, both run entirely in the browser. This is a small MCP server that connects your agent to both tabs at once. It gets tools like `notes_page`, `notes_transcribe`, `tex_write`, `tex_compile` and `tex_pdf_page`: it can look at a page of your notes, turn it into LaTeX, put it into your project, compile it and look at the PDF.
 
 ```
 you                    your agent                  brainbridge                               your browser tabs
